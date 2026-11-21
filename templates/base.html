@@ -16,8 +16,15 @@
       </a>
       <nav class="nav">
         <a href="{% url 'home' %}">Dashboard</a>
-        <a href="{% url 'login' %}">Log in</a>
-        <a class="button button-small" href="{% url 'signup' %}">Sign up</a>
+        {% if user.is_authenticated %}
+          <form class="logout-form" method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button class="button button-small button-ghost" type="submit">Log out</button>
+          </form>
+        {% else %}
+          <a href="{% url 'login' %}">Log in</a>
+          <a class="button button-small" href="{% url 'signup' %}">Sign up</a>
+        {% endif %}
       </nav>
     </div>
   </header>

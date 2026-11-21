@@ -1,8 +1,22 @@
 from django.contrib import messages
+from django.contrib.auth import login, logout
 from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_POST
 
 from .forms import LoginForm, SignUpForm
 from .models import Appointment
+
+
+def _safe_next_url(request):
+    next_url = request.POST.get("next") or request.GET.get("next")
+    if next_url and url_has_allowed_host_and_scheme(
+        next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return next_url
+    return None
 
 
 def home_view(request):
@@ -18,16 +32,38 @@ def home_view(request):
 
 
 def login_view(request):
-    # Phase 2 replaces this stub with real authentication.
-    if request.method == "POST":
-        messages.info(request, "Authentication lands in phase 2 - nothing was submitted yet.")
+    if request.user.is_authenticated:
         return redirect("home")
-    return render(request, "core/login.html", {"form": LoginForm(request=request)})
+
+    form = LoginForm(request, data=request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        login(request, form.get_user())
+        messages.success(request, f"Welcome back, {request.user.username}.")
+        return redirect(_safe_next_url(request) or "home")
+
+    return render(
+        request,
+        "core/login.html",
+        {"form": form, "next": request.GET.get("next", "")},
+    )
 
 
 def signup_view(request):
-    # Phase 2 replaces this stub with validation and user creation.
-    if request.method == "POST":
-        messages.info(request, "Account creation lands in phase 2 - nothing was submitted yet.")
+    if request.user.is_authenticated:
         return redirect("home")
-    return render(request, "core/signup.html", {"form": SignUpForm()})
+
+    form = SignUpForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        messages.success(request, f"Account created for {user.username}. You can log in now.")
+        return redirect("login")
+
+    return render(request, "core/signup.html", {"form": form})
+
+
+@require_POST
+def logout_view(request):
+    if request.user.is_authenticated:
+        logout(request)
+        messages.success(request, "You have been logged out.")
+    return redirect("home")

@@ -1,10 +1,16 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 
 
 class LoginForm(AuthenticationForm):
-    """Styled login form. Authentication logic is wired up in phase 2."""
+    """Styled login form handling credential checks."""
+
+    error_messages = {
+        "invalid_login": "Invalid username or password. Please try again.",
+        "inactive": "This account is inactive.",
+    }
 
     username = forms.CharField(
         label="Username",
@@ -30,7 +36,7 @@ class LoginForm(AuthenticationForm):
 
 
 class SignUpForm(UserCreationForm):
-    """Styled sign-up form. Validation is hardened in phase 2."""
+    """Sign-up form with case-insensitive uniqueness checks."""
 
     email = forms.EmailField(
         label="Email",
@@ -66,3 +72,21 @@ class SignUpForm(UserCreationForm):
         self.fields["password2"].widget.attrs.update(
             {"class": "input", "placeholder": "repeat the password", "autocomplete": "new-password"}
         )
+
+    def clean_username(self):
+        username = self.cleaned_data["username"].strip()
+        if User.objects.filter(username__iexact=username).exists():
+            raise ValidationError("That username is already taken.")
+        return username
+
+    def clean_email(self):
+        email = self.cleaned_data["email"].strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise ValidationError("An account with this email already exists.")
+        return email
+
+    def clean_first_name(self):
+        return self.cleaned_data["first_name"].strip().title()
+
+    def clean_last_name(self):
+        return self.cleaned_data["last_name"].strip().title()

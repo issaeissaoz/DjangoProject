@@ -109,6 +109,10 @@ a:hover {
   text-decoration: none;
 }
 
+.logout-form {
+  margin: 0;
+}
+
 /* Layout */
 main.container {
   flex: 1;
