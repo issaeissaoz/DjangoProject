@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard · Appointment System{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>Appointments</h1>
+      <p>An overview of every appointment currently in the system.</p>
+    </div>
+    <a class="button button-ghost" href="{% url 'signup' %}">Create an account</a>
+  </div>
+
+  <section class="stats">
+    <div class="stat">
+      <p class="stat-label">Total</p>
+      <p class="stat-value">{{ total_count }}</p>
+    </div>
+    <div class="stat">
+      <p class="stat-label">Pending</p>
+      <p class="stat-value">{{ pending_count }}</p>
+    </div>
+    <div class="stat">
+      <p class="stat-label">Confirmed</p>
+      <p class="stat-value">{{ confirmed_count }}</p>
+    </div>
+    <div class="stat">
+      <p class="stat-label">Completed</p>
+      <p class="stat-value">{{ completed_count }}</p>
+    </div>
+  </section>
+
+  <section class="card">
+    {% if appointments %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Service</th>
+              <th scope="col">Date</th>
+              <th scope="col">Time</th>
+              <th scope="col">Client</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for appointment in appointments %}
+              <tr>
+                <td>{{ appointment.get_service_display }}</td>
+                <td>{{ appointment.date|date:"D, d M Y" }}</td>
+                <td>{{ appointment.time|time:"H:i" }}</td>
+                <td>
+                  {% if appointment.user %}
+                    {{ appointment.user.get_full_name|default:appointment.user.username }}
+                  {% else %}
+                    Unassigned
+                  {% endif %}
+                </td>
+                <td><span class="badge badge-{{ appointment.status }}">{{ appointment.get_status_display }}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        <strong>No appointments yet</strong>
+        Appointments added in the Django admin will show up here.
+      </div>
+    {% endif %}
+  </section>
+{% endblock %}

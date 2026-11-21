@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Sign up · Appointment System{% endblock %}
+
+{% block content %}
+  <div class="auth card">
+    <h1>Create your account</h1>
+    <p class="subtitle">Sign up to book and track your appointments.</p>
+
+    {% if form.non_field_errors %}
+      <ul class="error-list">
+        {% for error in form.non_field_errors %}
+          <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% for field in form %}
+        <div class="field">
+          <label for="{{ field.id_for_label }}">
+            {{ field.label }}{% if field.field.required %} <span aria-hidden="true">*</span>{% endif %}
+          </label>
+          {{ field }}
+          {% if field.help_text %}<div class="help">{{ field.help_text|safe }}</div>{% endif %}
+          {% for error in field.errors %}
+            <p class="error">{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+      <button class="button button-block" type="submit">Sign up</button>
+    </form>
+
+    <p class="form-footer">Already have an account? <a href="{% url 'login' %}">Log in</a></p>
+  </div>
+{% endblock %}

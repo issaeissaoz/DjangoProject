@@ -1,0 +1,40 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Appointment System{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'Appointment/css/style.css' %}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="{% url 'home' %}">
+        <span class="brand-mark">AS</span>
+        <span>Appointment System</span>
+      </a>
+      <nav class="nav">
+        <a href="{% url 'home' %}">Dashboard</a>
+        <a href="{% url 'login' %}">Log in</a>
+        <a class="button button-small" href="{% url 'signup' %}">Sign up</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}
+          <li class="message message-{{ message.tags|default:'info' }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">University appointment system &middot; Django</div>
+  </footer>
+</body>
+</html>
