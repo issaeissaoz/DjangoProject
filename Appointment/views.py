@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth import login, logout
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
@@ -19,8 +20,9 @@ def _safe_next_url(request):
     return None
 
 
+@login_required
 def home_view(request):
-    appointments = Appointment.objects.select_related("user")
+    appointments = Appointment.objects.select_related("user").filter(user=request.user)
     context = {
         "appointments": appointments,
         "total_count": appointments.count(),

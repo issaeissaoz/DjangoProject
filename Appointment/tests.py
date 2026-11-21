@@ -1,14 +1,32 @@
 import datetime
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
 from .models import Appointment
 
+PASSWORD = "Str0ngPass!2026"
+
+
+def make_appointment(user=None, **overrides):
+    data = {
+        "user": user,
+        "service": Appointment.Service.GENERAL,
+        "date": datetime.date(2026, 6, 1),
+        "time": datetime.time(9, 0),
+    }
+    data.update(overrides)
+    return Appointment.objects.create(**data)
+
 
 class PageTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("amina", "amina@example.com", PASSWORD)
+
     def test_home_page_renders_dashboard(self):
+        self.client.force_login(self.user)
         response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "core/home.html")
@@ -31,7 +49,7 @@ class PageTests(TestCase):
 
 class AppointmentModelTests(TestCase):
     def test_string_representation(self):
-        appointment = Appointment.objects.create(
+        appointment = make_appointment(
             service=Appointment.Service.DENTAL,
             date=datetime.date(2026, 3, 4),
             time=datetime.time(9, 30),
@@ -39,43 +57,37 @@ class AppointmentModelTests(TestCase):
         self.assertEqual(str(appointment), "Dental check-up on 04 Mar 2026 at 09:30")
 
     def test_default_status_is_pending(self):
-        appointment = Appointment.objects.create(
-            service=Appointment.Service.GENERAL,
-            date=datetime.date(2026, 3, 4),
-            time=datetime.time(10, 0),
-        )
+        appointment = make_appointment(date=datetime.date(2026, 3, 4), time=datetime.time(10, 0))
         self.assertEqual(appointment.status, Appointment.Status.PENDING)
 
     def test_ordering_is_by_date_then_time(self):
-        later = Appointment.objects.create(
-            service=Appointment.Service.GENERAL,
-            date=datetime.date(2026, 5, 1),
-            time=datetime.time(8, 0),
-        )
-        earlier = Appointment.objects.create(
+        later = make_appointment(date=datetime.date(2026, 5, 1), time=datetime.time(8, 0))
+        earlier = make_appointment(
             service=Appointment.Service.EYE,
             date=datetime.date(2026, 4, 1),
             time=datetime.time(16, 0),
         )
-        same_day_later = Appointment.objects.create(
+        same_day_later = make_appointment(
             service=Appointment.Service.PHYSIO,
             date=datetime.date(2026, 4, 1),
             time=datetime.time(17, 0),
         )
-        self.assertEqual(
-            list(Appointment.objects.all()), [earlier, same_day_later, later]
-        )
+        self.assertEqual(list(Appointment.objects.all()), [earlier, same_day_later, later])
 
 
 class DashboardTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("amina", "amina@example.com", PASSWORD)
+        self.client.force_login(self.user)
+
     def test_dashboard_counts_and_rows(self):
-        Appointment.objects.create(
-            service=Appointment.Service.GENERAL,
-            date=datetime.date(2026, 6, 1),
-            time=datetime.time(9, 0),
+        make_appointment(
+            user=self.user,
             status=Appointment.Status.CONFIRMED,
+            date=datetime.date(2026, 6, 1),
         )
-        Appointment.objects.create(
+        make_appointment(
+            user=self.user,
             service=Appointment.Service.EYE,
             date=datetime.date(2026, 6, 2),
             time=datetime.time(11, 0),
@@ -92,16 +104,14 @@ class DashboardTests(TestCase):
 
 
 class SignUpTests(TestCase):
-    password = "Str0ngPass!2026"
-
     def data(self, **overrides):
         data = {
             "username": "amina",
             "first_name": "amina",
             "last_name": "rahim",
             "email": "Amina@Example.com",
-            "password1": self.password,
-            "password2": self.password,
+            "password1": PASSWORD,
+            "password2": PASSWORD,
         }
         data.update(overrides)
         return data
@@ -111,8 +121,8 @@ class SignUpTests(TestCase):
         self.assertRedirects(response, reverse("login"))
 
         user = User.objects.get(username="amina")
-        self.assertNotEqual(user.password, self.password)
-        self.assertTrue(user.check_password(self.password))
+        self.assertNotEqual(user.password, PASSWORD)
+        self.assertTrue(user.check_password(PASSWORD))
         self.assertTrue(user.password.startswith("pbkdf2_"))
 
     def test_signup_normalises_email_and_names(self):
@@ -130,14 +140,14 @@ class SignUpTests(TestCase):
         self.assertTrue(User.objects.filter(username="amina").exists())
 
     def test_duplicate_username_is_rejected_case_insensitively(self):
-        User.objects.create_user("Amina", "other@example.com", self.password)
+        User.objects.create_user("Amina", "other@example.com", PASSWORD)
         response = self.client.post(reverse("signup"), self.data(username="AMINA"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "That username is already taken.")
         self.assertEqual(User.objects.count(), 1)
 
     def test_duplicate_email_is_rejected_case_insensitively(self):
-        User.objects.create_user("someone", "amina@example.com", self.password)
+        User.objects.create_user("someone", "amina@example.com", PASSWORD)
         response = self.client.post(reverse("signup"), self.data(email="AMINA@example.com"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "An account with this email already exists.")
@@ -173,21 +183,19 @@ class SignUpTests(TestCase):
         self.assertEqual(User.objects.count(), 0)
 
     def test_signup_page_redirects_authenticated_users(self):
-        user = User.objects.create_user("amina", "amina@example.com", self.password)
+        user = User.objects.create_user("amina", "amina@example.com", PASSWORD)
         self.client.force_login(user)
         response = self.client.get(reverse("signup"))
         self.assertRedirects(response, reverse("home"))
 
 
 class LoginTests(TestCase):
-    password = "Str0ngPass!2026"
-
     def setUp(self):
-        self.user = User.objects.create_user("amina", "amina@example.com", self.password)
+        self.user = User.objects.create_user("amina", "amina@example.com", PASSWORD)
 
     def test_login_creates_session(self):
         response = self.client.post(
-            reverse("login"), {"username": "amina", "password": self.password}
+            reverse("login"), {"username": "amina", "password": PASSWORD}
         )
         self.assertRedirects(response, reverse("home"))
         self.assertEqual(self.client.session["_auth_user_id"], str(self.user.pk))
@@ -202,15 +210,15 @@ class LoginTests(TestCase):
 
     def test_unknown_user_is_rejected(self):
         response = self.client.post(
-            reverse("login"), {"username": "nobody", "password": self.password}
+            reverse("login"), {"username": "nobody", "password": PASSWORD}
         )
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("_auth_user_id", self.client.session)
 
     def test_login_returns_to_safe_next_url(self):
         response = self.client.post(
-            reverse("login") + "?next=" + reverse("signup"),
-            {"username": "amina", "password": self.password, "next": reverse("signup")},
+            reverse("login"),
+            {"username": "amina", "password": PASSWORD, "next": reverse("signup")},
         )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("signup"))
@@ -218,7 +226,7 @@ class LoginTests(TestCase):
     def test_login_ignores_offsite_next_url(self):
         response = self.client.post(
             reverse("login"),
-            {"username": "amina", "password": self.password, "next": "https://evil.example/"},
+            {"username": "amina", "password": PASSWORD, "next": "https://evil.example/"},
         )
         self.assertRedirects(response, reverse("home"))
 
@@ -229,10 +237,8 @@ class LoginTests(TestCase):
 
 
 class LogoutTests(TestCase):
-    password = "Str0ngPass!2026"
-
     def setUp(self):
-        self.user = User.objects.create_user("amina", "amina@example.com", self.password)
+        self.user = User.objects.create_user("amina", "amina@example.com", PASSWORD)
         self.client.force_login(self.user)
 
     def test_logout_requires_post(self):
@@ -241,10 +247,93 @@ class LogoutTests(TestCase):
 
     def test_logout_clears_authentication(self):
         response = self.client.post(reverse("logout"))
-        self.assertRedirects(response, reverse("home"))
+        self.assertRedirects(response, reverse("home"), fetch_redirect_response=False)
         self.assertNotIn("_auth_user_id", self.client.session)
 
     def test_nav_shows_logout_when_authenticated(self):
         response = self.client.get(reverse("home"))
         self.assertContains(response, "Log out")
+        self.assertContains(response, "Signed in as")
         self.assertNotContains(response, "Sign up")
+
+
+class SessionTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("amina", "amina@example.com", PASSWORD)
+        self.other = User.objects.create_user("bilal", "bilal@example.com", PASSWORD)
+
+    def login(self, username="amina"):
+        return self.client.post(
+            reverse("login"), {"username": username, "password": PASSWORD}
+        )
+
+    def test_anonymous_dashboard_redirects_to_login(self):
+        response = self.client.get(reverse("home"))
+        self.assertRedirects(
+            response, f"{reverse('login')}?next={reverse('home')}"
+        )
+
+    def test_dashboard_shows_only_own_appointments(self):
+        make_appointment(user=self.user, service=Appointment.Service.DENTAL)
+        make_appointment(
+            user=self.other,
+            service=Appointment.Service.EYE,
+            date=datetime.date(2026, 7, 1),
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("home"))
+        self.assertContains(response, "Dental check-up")
+        self.assertNotContains(response, "Eye examination")
+        self.assertEqual(response.context["total_count"], 1)
+
+    def test_session_persists_across_requests(self):
+        self.login()
+        self.assertIn("_auth_user_id", self.client.session)
+
+        first = self.client.get(reverse("home"))
+        second = self.client.get(reverse("home"))
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.context["user"], self.user)
+        self.assertIn("_auth_user_id", self.client.session)
+
+    def test_login_sets_persistent_httponly_cookie(self):
+        response = self.login()
+        cookie = response.cookies[settings.SESSION_COOKIE_NAME]
+        self.assertEqual(int(cookie["max-age"]), settings.SESSION_COOKIE_AGE)
+        self.assertTrue(cookie["httponly"])
+        self.assertEqual(cookie["samesite"], "Lax")
+        self.assertFalse(settings.SESSION_EXPIRE_AT_BROWSER_CLOSE)
+
+    def test_session_expiry_is_refreshed_on_requests(self):
+        self.login()
+        self.assertGreater(
+            self.client.session.get_expiry_age(), settings.SESSION_COOKIE_AGE - 60
+        )
+        self.assertLessEqual(
+            self.client.session.get_expiry_age(), settings.SESSION_COOKIE_AGE
+        )
+        self.assertTrue(settings.SESSION_SAVE_EVERY_REQUEST)
+
+    def test_login_returns_to_protected_dashboard(self):
+        response = self.client.get(reverse("home"))
+        login_url = response.url
+        response = self.client.post(
+            login_url,
+            {"username": "amina", "password": PASSWORD, "next": reverse("home")},
+        )
+        self.assertRedirects(response, reverse("home"))
+        self.assertEqual(self.client.get(reverse("home")).status_code, 200)
+
+    def test_logout_ends_the_session(self):
+        self.login()
+        old_key = self.client.session.session_key
+
+        response = self.client.post(reverse("logout"))
+        self.assertEqual(response.status_code, 302)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertNotEqual(self.client.session.session_key, old_key)
+
+        dashboard = self.client.get(reverse("home"))
+        self.assertEqual(dashboard.status_code, 302)
+        self.assertIn(reverse("login"), dashboard.url)

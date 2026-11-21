@@ -17,6 +17,7 @@
       <nav class="nav">
         <a href="{% url 'home' %}">Dashboard</a>
         {% if user.is_authenticated %}
+          <span class="nav-user">Signed in as <strong>{{ user.username }}</strong></span>
           <form class="logout-form" method="post" action="{% url 'logout' %}">
             {% csrf_token %}
             <button class="button button-small button-ghost" type="submit">Log out</button>

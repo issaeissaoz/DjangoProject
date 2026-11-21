@@ -113,6 +113,16 @@ a:hover {
   margin: 0;
 }
 
+.nav-user {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.nav-user strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 /* Layout */
 main.container {
   flex: 1;

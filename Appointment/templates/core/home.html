@@ -6,9 +6,12 @@
   <div class="page-head">
     <div>
       <h1>Appointments</h1>
-      <p>An overview of every appointment currently in the system.</p>
+      <p>Your appointments, newest booking first. Signed in as {{ user.username }}.</p>
     </div>
-    <a class="button button-ghost" href="{% url 'signup' %}">Create an account</a>
+    <form class="logout-form" method="post" action="{% url 'logout' %}">
+      {% csrf_token %}
+      <button class="button button-ghost" type="submit">Log out</button>
+    </form>
   </div>
 
   <section class="stats">

@@ -118,6 +118,27 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 
+# Authentication redirects
+# https://docs.djangoproject.com/en/6.1/ref/settings/#login-url
+
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'home'
+LOGOUT_REDIRECT_URL = 'home'
+
+
+# Sessions
+# https://docs.djangoproject.com/en/6.1/ref/settings/#session-cookie-age
+#
+# A login lasts until the user logs out: the cookie survives closing the
+# browser and its 2-week expiry is pushed forward on every request.
+
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 14
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+
+
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
