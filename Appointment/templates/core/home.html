@@ -6,12 +6,15 @@
   <div class="page-head">
     <div>
       <h1>Appointments</h1>
-      <p>Your appointments, newest booking first. Signed in as {{ user.username }}.</p>
+      <p>Your appointments, earliest first. Signed in as {{ user.username }}.</p>
     </div>
-    <form class="logout-form" method="post" action="{% url 'logout' %}">
-      {% csrf_token %}
-      <button class="button button-ghost" type="submit">Log out</button>
-    </form>
+    <div class="page-head-actions">
+      <a class="button" href="{% url 'appointment_create' %}">Book appointment</a>
+      <form class="logout-form" method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button class="button button-ghost" type="submit">Log out</button>
+      </form>
+    </div>
   </div>
 
   <section class="stats">
@@ -39,27 +42,31 @@
         <table>
           <thead>
             <tr>
+              <th scope="col">Title</th>
               <th scope="col">Service</th>
               <th scope="col">Date</th>
               <th scope="col">Time</th>
-              <th scope="col">Client</th>
               <th scope="col">Status</th>
+              <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
             {% for appointment in appointments %}
               <tr>
+                <td class="cell-title">
+                  <span class="cell-title-main">{{ appointment.title }}</span>
+                  {% if appointment.description %}
+                    <span class="cell-title-note">{{ appointment.description|truncatechars:80 }}</span>
+                  {% endif %}
+                </td>
                 <td>{{ appointment.get_service_display }}</td>
                 <td>{{ appointment.date|date:"D, d M Y" }}</td>
                 <td>{{ appointment.time|time:"H:i" }}</td>
-                <td>
-                  {% if appointment.user %}
-                    {{ appointment.user.get_full_name|default:appointment.user.username }}
-                  {% else %}
-                    Unassigned
-                  {% endif %}
-                </td>
                 <td><span class="badge badge-{{ appointment.status }}">{{ appointment.get_status_display }}</span></td>
+                <td class="actions">
+                  <a href="{% url 'appointment_update' appointment.pk %}">Edit</a>
+                  <a href="{% url 'appointment_delete' appointment.pk %}">Delete</a>
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -68,7 +75,10 @@
     {% else %}
       <div class="empty">
         <strong>No appointments yet</strong>
-        Appointments added in the Django admin will show up here.
+        Book your first appointment and it will show up here.
+        <p class="empty-action">
+          <a class="button button-small" href="{% url 'appointment_create' %}">Book an appointment</a>
+        </p>
       </div>
     {% endif %}
   </section>

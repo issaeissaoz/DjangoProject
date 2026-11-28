@@ -4,7 +4,9 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
+from .forms import AppointmentForm
 from .models import Appointment
 
 PASSWORD = "Str0ngPass!2026"
@@ -13,12 +15,29 @@ PASSWORD = "Str0ngPass!2026"
 def make_appointment(user=None, **overrides):
     data = {
         "user": user,
+        "title": "Dental follow-up",
         "service": Appointment.Service.GENERAL,
         "date": datetime.date(2026, 6, 1),
         "time": datetime.time(9, 0),
     }
     data.update(overrides)
     return Appointment.objects.create(**data)
+
+
+def future_date(days=3):
+    return timezone.localdate() + datetime.timedelta(days=days)
+
+
+def booking_payload(**overrides):
+    data = {
+        "title": "Weekly physiotherapy",
+        "service": Appointment.Service.PHYSIO,
+        "date": future_date().isoformat(),
+        "time": "10:30",
+        "description": "Bring the referral letter.",
+    }
+    data.update(overrides)
+    return data
 
 
 class PageTests(TestCase):
@@ -50,6 +69,7 @@ class PageTests(TestCase):
 class AppointmentModelTests(TestCase):
     def test_string_representation(self):
         appointment = make_appointment(
+            title="Dental check-up",
             service=Appointment.Service.DENTAL,
             date=datetime.date(2026, 3, 4),
             time=datetime.time(9, 30),
@@ -73,6 +93,89 @@ class AppointmentModelTests(TestCase):
             time=datetime.time(17, 0),
         )
         self.assertEqual(list(Appointment.objects.all()), [earlier, same_day_later, later])
+
+
+class AppointmentFormTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("amina", "amina@example.com", PASSWORD)
+        self.other = User.objects.create_user("bilal", "bilal@example.com", PASSWORD)
+
+    def test_valid_booking_saves_pending_appointment(self):
+        form = AppointmentForm(booking_payload(), user=self.user)
+        self.assertTrue(form.is_valid(), form.errors)
+
+        appointment = form.save(commit=False)
+        appointment.user = self.user
+        appointment.save()
+
+        self.assertEqual(Appointment.objects.count(), 1)
+        self.assertEqual(appointment.status, Appointment.Status.PENDING)
+
+    def test_title_and_description_are_trimmed(self):
+        form = AppointmentForm(
+            booking_payload(title="  Annual review  ", description="  Bring ID.  "),
+            user=self.user,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["title"], "Annual review")
+        self.assertEqual(form.cleaned_data["description"], "Bring ID.")
+
+    def test_short_title_is_rejected(self):
+        form = AppointmentForm(booking_payload(title="ab"), user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn("title", form.errors)
+
+    def test_blank_title_is_rejected(self):
+        form = AppointmentForm(booking_payload(title=""), user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn("title", form.errors)
+
+    def test_past_date_is_rejected(self):
+        form = AppointmentForm(
+            booking_payload(date=future_date(-1).isoformat()), user=self.user
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("Choose today or a future date.", form.errors["date"])
+
+    def test_time_in_the_past_today_is_rejected(self):
+        form = AppointmentForm(
+            booking_payload(date=timezone.localdate().isoformat(), time="00:00"),
+            user=self.user,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("Choose a time later than now.", form.errors["time"])
+
+    def test_duplicate_slot_for_same_user_is_rejected(self):
+        make_appointment(
+            user=self.user,
+            title="Existing booking",
+            date=future_date(),
+            time=datetime.time(10, 30),
+        )
+        form = AppointmentForm(booking_payload(), user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn(
+            "You already have an appointment at this date and time.", form.errors["time"]
+        )
+
+    def test_same_slot_is_allowed_for_another_user(self):
+        make_appointment(
+            user=self.other,
+            title="Taken by someone else",
+            date=future_date(),
+            time=datetime.time(10, 30),
+        )
+        form = AppointmentForm(booking_payload(), user=self.user)
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_editing_does_not_clash_with_itself(self):
+        appointment = make_appointment(
+            user=self.user, date=future_date(), time=datetime.time(10, 30)
+        )
+        form = AppointmentForm(
+            booking_payload(title="Renamed review"), instance=appointment, user=self.user
+        )
+        self.assertTrue(form.is_valid(), form.errors)
 
 
 class DashboardTests(TestCase):
@@ -101,6 +204,125 @@ class DashboardTests(TestCase):
     def test_dashboard_shows_empty_state(self):
         response = self.client.get(reverse("home"))
         self.assertContains(response, "No appointments yet")
+
+
+class BookingViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("amina", "amina@example.com", PASSWORD)
+        self.other = User.objects.create_user("bilal", "bilal@example.com", PASSWORD)
+        self.client.force_login(self.user)
+
+    def test_create_page_renders_booking_form(self):
+        response = self.client.get(reverse("appointment_create"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "core/appointment_form.html")
+        for field in ("title", "service", "date", "time", "description"):
+            self.assertContains(response, f'name="{field}"')
+
+    def test_create_saves_appointment_for_signed_in_user(self):
+        response = self.client.post(reverse("appointment_create"), booking_payload())
+        self.assertRedirects(response, reverse("home"))
+
+        appointment = Appointment.objects.get()
+        self.assertEqual(appointment.user, self.user)
+        self.assertEqual(appointment.title, "Weekly physiotherapy")
+        self.assertEqual(appointment.status, Appointment.Status.PENDING)
+
+    def test_invalid_booking_shows_errors_and_saves_nothing(self):
+        response = self.client.post(reverse("appointment_create"), booking_payload(title=""))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "This field is required.")
+        self.assertEqual(Appointment.objects.count(), 0)
+
+    def test_create_rejects_a_past_date(self):
+        response = self.client.post(
+            reverse("appointment_create"),
+            booking_payload(date=future_date(-2).isoformat()),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Choose today or a future date.")
+        self.assertEqual(Appointment.objects.count(), 0)
+
+    def test_update_changes_appointment(self):
+        appointment = make_appointment(
+            user=self.user, date=future_date(), time=datetime.time(9, 0)
+        )
+        response = self.client.post(
+            reverse("appointment_update", args=[appointment.pk]),
+            booking_payload(title="Rescheduled review", time="11:00"),
+        )
+        self.assertRedirects(response, reverse("home"))
+
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.title, "Rescheduled review")
+        self.assertEqual(appointment.time, datetime.time(11, 0))
+
+    def test_update_page_shows_existing_values(self):
+        appointment = make_appointment(
+            user=self.user, title="Eye check", date=future_date()
+        )
+        response = self.client.get(reverse("appointment_update", args=[appointment.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Eye check")
+
+    def test_other_users_appointment_cannot_be_edited(self):
+        appointment = make_appointment(
+            user=self.other, title="Not yours", date=future_date()
+        )
+        url = reverse("appointment_update", args=[appointment.pk])
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(self.client.post(url, booking_payload()).status_code, 404)
+
+    def test_delete_page_asks_for_confirmation(self):
+        appointment = make_appointment(
+            user=self.user, title="Old booking", date=future_date()
+        )
+        response = self.client.get(reverse("appointment_delete", args=[appointment.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Old booking")
+        self.assertTrue(Appointment.objects.filter(pk=appointment.pk).exists())
+
+    def test_delete_removes_appointment(self):
+        appointment = make_appointment(user=self.user, date=future_date())
+        response = self.client.post(
+            reverse("appointment_delete", args=[appointment.pk])
+        )
+        self.assertRedirects(response, reverse("home"))
+        self.assertFalse(Appointment.objects.filter(pk=appointment.pk).exists())
+
+    def test_other_users_appointment_cannot_be_deleted(self):
+        appointment = make_appointment(user=self.other, date=future_date())
+        response = self.client.post(
+            reverse("appointment_delete", args=[appointment.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Appointment.objects.filter(pk=appointment.pk).exists())
+
+    def test_booking_views_require_login(self):
+        self.client.logout()
+        appointment = make_appointment(user=self.user, date=future_date())
+        for name, args in (
+            ("appointment_create", []),
+            ("appointment_update", [appointment.pk]),
+            ("appointment_delete", [appointment.pk]),
+        ):
+            response = self.client.get(reverse(name, args=args))
+            self.assertEqual(response.status_code, 302)
+            self.assertIn(reverse("login"), response.url)
+
+    def test_dashboard_lists_booking_actions(self):
+        appointment = make_appointment(
+            user=self.user, title="Dental follow-up", date=future_date()
+        )
+        response = self.client.get(reverse("home"))
+        self.assertContains(response, "Dental follow-up")
+        self.assertContains(response, "Book appointment")
+        self.assertContains(
+            response, reverse("appointment_update", args=[appointment.pk])
+        )
+        self.assertContains(
+            response, reverse("appointment_delete", args=[appointment.pk])
+        )
 
 
 class SignUpTests(TestCase):

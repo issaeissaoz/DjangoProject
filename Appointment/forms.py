@@ -2,6 +2,9 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.utils import timezone
+
+from .models import Appointment
 
 
 class LoginForm(AuthenticationForm):
@@ -90,3 +93,79 @@ class SignUpForm(UserCreationForm):
 
     def clean_last_name(self):
         return self.cleaned_data["last_name"].strip().title()
+
+
+class AppointmentForm(forms.ModelForm):
+    """Book or edit an appointment that belongs to the signed-in user."""
+
+    title = forms.CharField(
+        label="Title",
+        min_length=3,
+        max_length=120,
+        error_messages={
+            "min_length": "Give the appointment a title of at least 3 characters."
+        },
+        widget=forms.TextInput(
+            attrs={
+                "class": "input",
+                "placeholder": "e.g. Dental follow-up",
+                "autocomplete": "off",
+            }
+        ),
+    )
+    description = forms.CharField(
+        label="Description",
+        required=False,
+        max_length=1000,
+        widget=forms.Textarea(
+            attrs={
+                "class": "input",
+                "rows": 4,
+                "placeholder": "Anything the clinic should know (optional)",
+            }
+        ),
+    )
+
+    class Meta:
+        model = Appointment
+        fields = ("title", "service", "date", "time", "description")
+        widgets = {
+            "service": forms.Select(attrs={"class": "input"}),
+            "date": forms.DateInput(attrs={"class": "input", "type": "date"}),
+            "time": forms.TimeInput(attrs={"class": "input", "type": "time"}),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+
+    def clean_title(self):
+        return " ".join(self.cleaned_data["title"].split())
+
+    def clean_description(self):
+        return self.cleaned_data["description"].strip()
+
+    def clean_date(self):
+        date = self.cleaned_data["date"]
+        if date < timezone.localdate():
+            raise ValidationError("Choose today or a future date.")
+        return date
+
+    def clean(self):
+        cleaned_data = super().clean()
+        date = cleaned_data.get("date")
+        time = cleaned_data.get("time")
+
+        if date and time:
+            if date == timezone.localdate() and time <= timezone.localtime().time():
+                self.add_error("time", "Choose a time later than now.")
+            elif self.user is not None:
+                clash = Appointment.objects.filter(user=self.user, date=date, time=time)
+                if self.instance.pk:
+                    clash = clash.exclude(pk=self.instance.pk)
+                if clash.exists():
+                    self.add_error(
+                        "time", "You already have an appointment at this date and time."
+                    )
+
+        return cleaned_data

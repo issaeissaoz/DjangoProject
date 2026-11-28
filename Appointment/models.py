@@ -23,15 +23,16 @@ class Appointment(models.Model):
         null=True,
         blank=True,
     )
+    title = models.CharField(max_length=120)
     service = models.CharField(max_length=32, choices=Service.choices)
     date = models.DateField()
     time = models.TimeField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
-    notes = models.TextField(blank=True)
+    description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["date", "time"]
 
     def __str__(self):
-        return f"{self.get_service_display()} on {self.date:%d %b %Y} at {self.time:%H:%M}"
+        return f"{self.title} on {self.date:%d %b %Y} at {self.time:%H:%M}"
